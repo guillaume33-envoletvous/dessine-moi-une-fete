@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Invitation</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="loading" class="state-msg"><p>Chargement de la soirée...</p></div>
+
+<div id="not-found" class="state-msg" style="display:none;">
+  <h2>Cette soirée n'existe pas ou plus</h2>
+  <p>Vérifie le lien que tu as reçu, ou demande à l'organisateur de te le renvoyer.</p>
+</div>
+
+<div id="content" style="display:none;">
+
+  <div class="hero">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+      <path d="M12 3c-2 3-2 5 0 7 2-2 2-4 0-7z"/>
+      <path d="M12 10c-3 1-5 3-5 6M12 10c3 1 5 3 5 6"/>
+      <circle cx="7" cy="17" r="1.4"/><circle cx="17" cy="17" r="1.4"/><circle cx="12" cy="19" r="1.4"/>
+    </svg>
+    <h1 id="ev-name"></h1>
+    <p class="sub" id="ev-tagline"></p>
+    <div class="date" id="ev-dateplace"></div>
+  </div>
+
+  <div class="wrap">
+
+    <section class="intro" id="ev-desc-section" style="display:none;">
+      <p id="ev-description"></p>
+    </section>
+
+    <hr class="divider">
+
+    <section>
+      <div class="card">
+        <h2>Confirmer ma présence</h2>
+        <form id="rsvp-form" novalidate>
+
+          <label for="fullname">Prénom et nom</label>
+          <input type="text" id="fullname" required>
+          <p class="field-error" id="err-fullname">Indique ton prénom et nom.</p>
+
+          <label for="email">Email</label>
+          <input type="email" id="email" required>
+          <p class="field-error" id="err-email">Indique une adresse email valide.</p>
+
+          <label for="guests">Nombre de personnes (toi compris)</label>
+          <input type="number" id="guests" min="1" max="20" value="1" required>
+          <p class="field-error" id="err-guests">Indique au moins 1 personne.</p>
+
+          <label>Ce que je ramène</label>
+          <div class="dish-row-top">
+            <select id="dish-category">
+              <option value="Amuse-gueule">Amuse-gueule</option>
+              <option value="Entrée">Entrée</option>
+              <option value="Plat">Plat</option>
+              <option value="Accompagnement">Accompagnement</option>
+              <option value="Fromage">Fromage</option>
+              <option value="Dessert">Dessert</option>
+            </select>
+            <input type="text" id="dish-desc" placeholder="ex : tarte aux pommes">
+          </div>
+          <button type="button" class="btn-add" id="add-dish">+ Ajouter ce plat à ma liste</button>
+          <div class="added-list" id="added-list"></div>
+
+          <label for="message">Message (allergies, retard, covoiturage...)</label>
+          <textarea id="message"></textarea>
+
+          <div style="margin-top:22px;">
+            <button type="submit" class="btn btn-primary">Confirmer ma venue</button>
+          </div>
+        </form>
+
+        <div id="confirmation">
+          <h2>C'est noté !</h2>
+          <p id="confirmation-text"></p>
+        </div>
+      </div>
+    </section>
+
+    <section id="pay-section" style="display:none;">
+      <div class="card pay-card">
+        <h2>Participation aux frais</h2>
+        <p class="pay-amount" id="pay-total">0 €</p>
+        <p class="pay-note">Basé sur <span id="pay-price"></span> / personne, pour <span id="pay-guests">1</span> personne(s).</p>
+        <a href="#" id="pay-link" class="btn" target="_blank" rel="noopener">Régler notre participation ↗</a>
+      </div>
+    </section>
+
+  </div>
+
+  <footer>Page créée avec Dessine-moi une fête.</footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script>
+const params = new URLSearchParams(window.location.search);
+const eventId = params.get('id');
+let EVENT = null;
+let dishes = [];
+
+async function loadEvent(){
+  if(!eventId){ return showNotFound(); }
+  const { data, error } = await sb.from('events').select('*').eq('id', eventId).single();
+  if(error || !data){ return showNotFound(); }
+  EVENT = data;
+  renderEvent();
+}
+
+function showNotFound(){
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('not-found').style.display = 'block';
+}
+
+function renderEvent(){
+  document.title = EVENT.name;
+  document.getElementById('ev-name').textContent = EVENT.name;
+  document.getElementById('ev-tagline').textContent = EVENT.tagline || '';
+  document.getElementById('ev-dateplace').textContent = EVENT.date_place || '';
+
+  if(EVENT.description){
+    document.getElementById('ev-description').textContent = EVENT.description;
+    document.getElementById('ev-desc-section').style.display = 'block';
+  }
+
+  if(EVENT.price_per_person > 0){
+    document.getElementById('pay-section').style.display = 'block';
+    document.getElementById('pay-price').textContent = EVENT.price_per_person.toLocaleString('fr-FR') + ' €';
+    if(EVENT.payment_url) document.getElementById('pay-link').href = EVENT.payment_url;
+    document.getElementById('guests').addEventListener('input', updatePayment);
+    updatePayment();
+  }
+
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+}
+
+function updatePayment(){
+  const guests = Math.max(1, parseInt(document.getElementById('guests').value) || 1);
+  const total = guests * EVENT.price_per_person;
+  document.getElementById('pay-total').textContent = total.toLocaleString('fr-FR') + ' €';
+  document.getElementById('pay-guests').textContent = guests;
+}
+
+function renderDishes(){
+  const addedList = document.getElementById('added-list');
+  addedList.innerHTML = '';
+  dishes.forEach((d, i) => {
+    const row = document.createElement('div');
+    row.className = 'added-item';
+    const label = document.createElement('span');
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.textContent = d.category;
+    label.appendChild(tag);
+    label.appendChild(document.createTextNode(d.desc || '(sans précision)'));
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className = 'dish-remove';
+    rm.textContent = 'retirer';
+    rm.addEventListener('click', () => { dishes.splice(i,1); renderDishes(); });
+    row.appendChild(label);
+    row.appendChild(rm);
+    addedList.appendChild(row);
+  });
+}
+
+document.getElementById('add-dish').addEventListener('click', () => {
+  const cat = document.getElementById('dish-category').value;
+  const desc = document.getElementById('dish-desc').value.trim();
+  dishes.push({ category: cat, desc: desc });
+  document.getElementById('dish-desc').value = '';
+  renderDishes();
+});
+
+function showError(id, show){
+  const el = document.getElementById('err-' + id);
+  if(el) el.classList.toggle('show', show);
+}
+
+document.getElementById('rsvp-form').addEventListener('submit', async function(e){
+  e.preventDefault();
+  let valid = true;
+
+  const fullname = document.getElementById('fullname').value.trim();
+  if(!fullname){ showError('fullname', true); valid = false; } else showError('fullname', false);
+
+  const email = document.getElementById('email').value.trim();
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  if(!emailOk){ showError('email', true); valid = false; } else showError('email', false);
+
+  const guests = parseInt(document.getElementById('guests').value);
+  if(!guests || guests < 1){ showError('guests', true); valid = false; } else showError('guests', false);
+
+  if(!valid) return;
+
+  const submitBtn = e.target.querySelector('button[type=submit]');
+  submitBtn.disabled = true;
+
+  const { error } = await sb.from('rsvps').insert({
+    event_id: eventId,
+    fullname: fullname,
+    email: email,
+    guests: guests,
+    dishes: dishes,
+    message: document.getElementById('message').value.trim()
+  });
+
+  if(error){
+    submitBtn.disabled = false;
+    alert("Un problème est survenu, réessaie dans un instant.");
+    return;
+  }
+
+  document.getElementById('rsvp-form').style.display = 'none';
+  const conf = document.getElementById('confirmation');
+  conf.style.display = 'block';
+  document.getElementById('confirmation-text').textContent =
+    'Merci ' + fullname.split(' ')[0] + ', ta présence pour ' + guests + ' personne(s) est confirmée.' +
+    (dishes.length ? ' Tu ramènes : ' + dishes.map(d => d.category.toLowerCase()).join(', ') + '.' : '');
+});
+
+loadEvent();
+</script>
+
+</body>
+</html>

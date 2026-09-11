@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Réponses de tes invités</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="loading" class="state-msg"><p>Chargement...</p></div>
+<div id="not-found" class="state-msg" style="display:none;">
+  <h2>Lien invalide</h2>
+  <p>Ce lien privé ne correspond à aucune soirée, ou le jeton ne correspond pas.</p>
+</div>
+
+<div id="content" style="display:none;">
+  <div class="hero">
+    <h1 id="ev-name"></h1>
+    <p class="sub">Réponses reçues pour cette soirée</p>
+  </div>
+
+  <div class="wrap">
+    <section>
+      <div class="card">
+        <div id="summary" style="margin-bottom:18px; font-size:15px;"></div>
+        <div id="rsvp-list"></div>
+        <p id="empty-msg" style="display:none; opacity:0.7;">Personne n'a encore répondu.</p>
+      </div>
+    </section>
+  </div>
+  <footer>Ce lien est privé, ne le partage pas avec tes invités.</footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script>
+const params = new URLSearchParams(window.location.search);
+const eventId = params.get('id');
+const token = params.get('token');
+
+async function load(){
+  if(!eventId || !token) return showNotFound();
+
+  const { data: event, error: evErr } = await sb.from('events').select('*').eq('id', eventId).single();
+  if(evErr || !event || String(event.admin_token) !== String(token)) return showNotFound();
+
+  document.getElementById('ev-name').textContent = event.name;
+
+  const { data: rsvps, error: rsvpErr } = await sb.from('rsvps')
+    .select('*').eq('event_id', eventId).order('created_at', { ascending: true });
+
+  const list = rsvps || [];
+  const totalGuests = list.reduce((sum, r) => sum + (r.guests || 0), 0);
+  document.getElementById('summary').textContent =
+    list.length + ' réponse(s) — ' + totalGuests + ' personne(s) au total' +
+    (event.price_per_person > 0 ? ' — ' + (totalGuests * event.price_per_person).toLocaleString('fr-FR') + ' € attendus' : '');
+
+  const container = document.getElementById('rsvp-list');
+  if(list.length === 0){
+    document.getElementById('empty-msg').style.display = 'block';
+  } else {
+    list.forEach(r => {
+      const div = document.createElement('div');
+      div.className = 'rsvp-item';
+      const dishesText = (r.dishes || []).map(d => d.category + (d.desc ? ' (' + d.desc + ')' : '')).join(', ');
+      div.innerHTML =
+        '<div class="name"></div>' +
+        '<div class="meta"></div>' +
+        (dishesText ? '<div class="meta">Apporte : ' + escapeHtml(dishesText) + '</div>' : '') +
+        (r.message ? '<div class="meta">"' + escapeHtml(r.message) + '"</div>' : '');
+      div.querySelector('.name').textContent = r.fullname + ' — ' + r.guests + ' personne(s)';
+      div.querySelector('.meta').textContent = r.email;
+      container.appendChild(div);
+    });
+  }
+
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+}
+
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function showNotFound(){
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('not-found').style.display = 'block';
+}
+
+load();
+</script>
+
+</body>
+</html>
